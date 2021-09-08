@@ -1,0 +1,39 @@
+version: '3'
+services:
+  api:
+    build:
+      context: .
+      args:
+        CODE_PATH: api
+    ports:
+      - "80:80"
+    env_file:
+      - envs/api.env
+      - envs/aws.env
+      - envs/dynamodb.env
+      - envs/telegram.env
+  transactions_monitor:
+    depends_on:
+      - api
+    build:
+      context: .
+      args:
+        CODE_PATH: transactions_monitor
+    env_file:
+      - envs/aws.env
+      - envs/dynamodb.env
+      - envs/telegram.env
+      - envs/whale_alerts.env
+  binance_flows_reports:
+    depends_on:
+      - api
+      - transactions_monitor
+    build:
+      context: .
+      args:
+        CODE_PATH: binance_flows_reports
+    env_file:
+      - envs/dynamodb.env
+      - envs/aws.env
+      - envs/telegram.env
+      - envs/api.env

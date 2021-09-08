@@ -1,0 +1,64 @@
+{
+  "executionRoleArn": "arn:aws:iam::%ACCOUNT_NUMBER%:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::%ACCOUNT_NUMBER%:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "image": "%IMAGE%",
+      "name": "binance_flows_reports",
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-region": "%AWS_REGION%",
+          "awslogs-group": "/toxic/binance_flows_reports"
+        }
+      },
+      "cpu": 1,
+      "memory": 128,
+      "entryPoint": [
+        "python",
+        "-m",
+        "src"
+      ],
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "%AWS_REGION%"
+        },
+        {
+          "name": "AWS_ACCESS_KEY_ID",
+          "value": "%AWS_ACCESS_KEY_ID%"
+        },
+        {
+          "name": "AWS_SECRET_ACCESS_KEY",
+          "value": "%AWS_SECRET_ACCESS_KEY%"
+        },
+        {
+          "name": "DYNAMODB_HOST",
+          "value": "%DYNAMODB_HOST%"
+        },
+        {
+          "name": "DYNAMODB_PORT",
+          "value": "%DYNAMODB_PORT%"
+        },
+        {
+          "name": "API_URL",
+          "value": "%API_URL%"
+        },
+        {
+          "name": "NOTIFICATIONS_PATH",
+          "value": "%NOTIFICATIONS_PATH%"
+        }
+      ],
+      "essential": true
+    }
+  ],
+  "cpu": "128",
+  "memory": "128",
+  "family": "toxic",
+  "requiresCompatibilities": [
+    "EC2"
+  ],
+  "networkMode": "awsvpc",
+  "placementConstraints": [],
+  "volumes": []
+}

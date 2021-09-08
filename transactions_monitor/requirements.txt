@@ -1,0 +1,4 @@
+aiohttp==3.7.4.post0
+boto3==1.18.11
+pydantic==1.8.2
+aiogram==2.14.3
