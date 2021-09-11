@@ -42,14 +42,11 @@ class OrderBook:
         self.start_datetime = datetime.now() + timedelta(minutes=5)
 
     async def initialize(self) -> None:
-        url = 'https://fapi.binance.com/fapi/v1/ticker/price?symbol=BTCUSDT'
         async with ClientSession() as session:
-            r = await session.get(url)
-            self.current_price = float((await r.json())['price'])
-        url = 'https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=1000'
-        async with ClientSession() as session:
-            r = await session.get(url)
-            data = await r.json()
+            async with session.get('https://fapi.binance.com/fapi/v1/ticker/price?symbol=BTCUSDT') as r:
+                self.current_price = float((await r.json())['price'])
+            async with session.get('https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=1000') as r:
+                data = await r.json()
         bid = [[float(i) for i in item] for item in data['bids']]
         ask = [[float(i) for i in item] for item in data['asks']]
         self.add_new_data(bid=bid, ask=ask)

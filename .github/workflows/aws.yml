@@ -1,0 +1,101 @@
+on:
+  release:
+    types: [ created ]
+  workflow_dispatch:
+env:
+  VERSION: ${{ github.sha }}
+  ECR_REPO: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/
+  CLUSTER_ARN: arn:aws:ecs:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:cluster/Toxic
+  SERVICE_ARN: arn:aws:ecs:${{ secrets.AWS_REGION }}:${{ secrets.AWS_ACCOUNT_ID }}:service
+
+name: Deploy to Amazon ECS
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker-compose build
+
+          docker tag toxic_api $ECR_REGISTRY/api:$VERSION
+          docker tag toxic_transactions_monitor $ECR_REGISTRY/transactions_monitor:$VERSION
+          docker tag toxic_binance_flows_reports $ECR_REGISTRY/binance_flows_reports:$VERSION
+
+          docker push $ECR_REGISTRY/api:$VERSION
+          docker push $ECR_REGISTRY/transactions_monitor:$VERSION
+          docker push $ECR_REGISTRY/binance_flows_reports:$VERSION
+
+      - name: Update task definitions
+        id: update_task_definitions
+        run: |
+          sed \
+          -e "s;%AWS_ACCOUNT_ID%;${{ secrets.AWS_ACCOUNT_ID }};g" \
+          -e "s;%IMAGE%;${ECR_REPO}api:${VERSION};g" \
+          -e "s;%AWS_REGION%;${AWS_REGION};g" \
+          -e "s;%AWS_ACCESS_KEY_ID%;${AWS_ACCESS_KEY_ID};g" \
+          -e "s;%AWS_SECRET_ACCESS_KEY%;${AWS_SECRET_ACCESS_KEY};g" \
+          -e "s;%DYNAMODB_HOST%;${{ secrets.DYNAMODB_HOST }};g" \
+          -e "s;%DYNAMODB_PORT%;${{ secrets.DYNAMODB_PORT }};g" \
+          -e "s;%API_URL%;${{ secrets.API_URL }};g" \
+          -e "s;%TG_BOT_TOKEN%;${{ secrets.TG_BOT_TOKEN }};g" \
+          -e "s;%WEBHOOK_PORT%;${{ secrets.WEBHOOK_PORT }};g" \
+          -e "s;%WEBHOOK_URL_PATH%;${{ secrets.WEBHOOK_URL_PATH }};g" \
+          -e "s;%WEBAPP_HOST%;${{ secrets.WEBAPP_HOST }};g" \
+          -e "s;%WEBAPP_PORT%;${{ secrets.WEBAPP_PORT }};g" \
+          -e "s;%NOTIFICATIONS_PATH%;${{ secrets.NOTIFICATIONS_PATH }};g" \
+          task_definitions/api_task.json > api-${VERSION}.json
+
+          sed \
+          -e "s;%AWS_ACCOUNT_ID%;${{ secrets.AWS_ACCOUNT_ID }};g" \
+          -e "s;%IMAGE%;${ECR_REPO}binance_flows_reports:${VERSION};g" \
+          -e "s;%AWS_REGION%;${AWS_REGION};g" \
+          -e "s;%AWS_ACCESS_KEY_ID%;${AWS_ACCESS_KEY_ID};g" \
+          -e "s;%AWS_SECRET_ACCESS_KEY%;${AWS_SECRET_ACCESS_KEY};g" \
+          -e "s;%DYNAMODB_HOST%;${{ secrets.DYNAMODB_HOST }};g" \
+          -e "s;%DYNAMODB_PORT%;${{ secrets.DYNAMODB_PORT }};g" \
+          -e "s;%API_URL%;${{ secrets.API_URL }};g" \
+          -e "s;%NOTIFICATIONS_PATH%;${{ secrets.NOTIFICATIONS_PATH }};g" \
+          task_definitions/binance_flows_reports.json > binance_flows_reports-${VERSION}.json
+
+          sed \
+          -e "s;%AWS_ACCOUNT_ID%;${{ secrets.AWS_ACCOUNT_ID }};g" \
+          -e "s;%IMAGE%;${ECR_REPO}transactions_monitor:${VERSION};g" \
+          -e "s;%AWS_REGION%;${AWS_REGION};g" \
+          -e "s;%AWS_ACCESS_KEY_ID%;${AWS_ACCESS_KEY_ID};g" \
+          -e "s;%AWS_SECRET_ACCESS_KEY%;${AWS_SECRET_ACCESS_KEY};g" \
+          -e "s;%DYNAMODB_HOST%;${{ secrets.DYNAMODB_HOST }};g" \
+          -e "s;%DYNAMODB_PORT%;${{ secrets.DYNAMODB_PORT }};g" \
+          -e "s;%WHALE_ALERTS_API_KEY%;${{ secrets.WHALE_ALERTS_API_KEY }};g" \
+          task_definitions/transactions_monitor.json > transactions_monitor-${VERSION}.json
+
+          aws ecs register-task-definition --family "api" --cli-input-json "file://api-${{ env.VERSION }}.json"
+          aws ecs register-task-definition --family "transactions_monitor" --cli-input-json "file://transactions_monitor-${{ env.VERSION }}.json"
+          aws ecs register-task-definition --family "binance_flows_reports" --cli-input-json  "file://binance_flows_reports-${{ env.VERSION }}.json"
+
+      - name: Deploy Amazon ECS task definitions
+        id: delpoy_task_definitions
+        run: |
+          aws ecs update-service --cluster "${{ env.CLUSTER_ARN }}" --service "{{ secrets.SERVICE_ARN }}/api" --task-definition "api"
+          aws ecs update-service --cluster "${{ env.CLUSTER_ARN }}" --service "{{ secrets.SERVICE_ARN }}/transactions_monitor" --task-definition "transactions_monitor"
+          aws ecs update-service --cluster "${{ env.CLUSTER_ARN }}" --service "{{ secrets.SERVICE_ARN }}/binance_flows_reports" --task-definition "binance_flows_reports"

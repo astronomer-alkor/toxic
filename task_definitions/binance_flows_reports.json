@@ -1,6 +1,6 @@
 {
-  "executionRoleArn": "arn:aws:iam::%ACCOUNT_NUMBER%:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::%ACCOUNT_NUMBER%:role/ecsTaskExecutionRole",
+  "executionRoleArn": "arn:aws:iam::%AWS_ACCOUNT_ID%:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::%AWS_ACCOUNT_ID%:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "image": "%IMAGE%",
@@ -9,11 +9,12 @@
         "logDriver": "awslogs",
         "options": {
           "awslogs-region": "%AWS_REGION%",
-          "awslogs-group": "/toxic/binance_flows_reports"
+          "awslogs-group": "/toxic/binance_flows_reports",
+          "awslogs-stream-prefix": "binance_flows_reports"
         }
       },
       "cpu": 1,
-      "memory": 128,
+      "memory": 512,
       "entryPoint": [
         "python",
         "-m",
@@ -52,11 +53,11 @@
       "essential": true
     }
   ],
-  "cpu": "128",
-  "memory": "128",
-  "family": "toxic",
+  "cpu": "256",
+  "memory": "512",
+  "family": "binance_flows_reports",
   "requiresCompatibilities": [
-    "EC2"
+    "FARGATE"
   ],
   "networkMode": "awsvpc",
   "placementConstraints": [],

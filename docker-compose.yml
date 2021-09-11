@@ -25,13 +25,13 @@ services:
       - envs/telegram.env
       - envs/whale_alerts.env
   binance_flows_reports:
-    depends_on:
-      - api
-      - transactions_monitor
     build:
       context: .
       args:
         CODE_PATH: binance_flows_reports
+    depends_on:
+      - api
+      - transactions_monitor
     env_file:
       - envs/dynamodb.env
       - envs/aws.env

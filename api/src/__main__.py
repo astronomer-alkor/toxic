@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from aiogram.dispatcher.webhook import get_new_configured_app
@@ -6,8 +7,8 @@ from aiohttp import web
 from .apps.order_book import start_order_book
 from .apps.whale_alerts import monitor_whale_trades
 from .config import ApiConfig, TelegramConfig
-from .handlers import bot, dp
 from .endpoints import routes
+from .handlers import bot, dp
 
 
 async def on_startup(*_) -> None:
@@ -19,7 +20,9 @@ async def on_startup(*_) -> None:
     if webhook.url != webhook_url:
         if not webhook.url:
             await bot.delete_webhook()
-        logging.info('Setting webhook')
+        logging.info('Sleeping 1 minute')
+        await asyncio.sleep(60)
+        logging.info('Setting the webhook')
         await bot.set_webhook(webhook_url)
 
 
