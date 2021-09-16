@@ -29,6 +29,8 @@ def aggregate_transactions(transactions):
     tickers = defaultdict(int)
     for transaction in transactions:
         if 'binance' in (transaction['from_name'], transaction['to_name']):
+            if transaction['from_name'] == transaction['to_name']:
+                continue
             multiplier = 1 if transaction['to_name'] == 'binance' else -1
             amount = transaction['amount'] * multiplier
             tickers[transaction['ticker']] += amount
@@ -38,11 +40,11 @@ def aggregate_transactions(transactions):
 def generate_message(hour_tickers, period, full=False):
     tickers_data = []
     for ticker, amount in hour_tickers.items():
-        if not amount:
+        if amount is None:
             continue
         postfix = ''
         if 'usd' in ticker:
-            if abs(amount / 10 ** 3) < 1000:
+            if not full and abs(amount / 10 ** 3) < 1000:
                 continue
             elif abs(amount / 10 ** 6) < 1000:
                 amount /= 10 ** 6
@@ -85,9 +87,10 @@ async def send_report(dynamodb, now, hours):
     transactions = get_transactions(dynamodb, now, hours)
     tickers = aggregate_transactions(transactions)
     mapping = {1: 'час', 6: 'последние 6 часов'}
-    if message := generate_message(tickers, period=mapping[hours], full=True):
+    if message := generate_message(tickers, period=mapping[hours]):
         async with ClientSession() as session:
-            await session.post(API().api_url, data={'message': message})
+            response = await session.post(API().api_url, data={'message': message})
+            logging.info(response.status)
 
 
 async def main():

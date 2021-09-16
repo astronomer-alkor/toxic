@@ -8,9 +8,8 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
     Message,
+    ReplyKeyboardRemove,
 )
 from aiogram.utils.exceptions import (
     BotBlocked,
@@ -27,42 +26,33 @@ from .utils import delete_incoming, log_incoming, get_last_funding, get_system_u
 bot = Bot(TelegramConfig().bot_token.get_secret_value(), loop=asyncio.get_event_loop())
 dp = Dispatcher(bot, loop=bot.loop, storage=MemoryStorage())
 
-reply_markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=1).add(
-    KeyboardButton('Текущая ставка финансирования'),
-    KeyboardButton('Стакан Binance BTCUSDT Futures'),
-    KeyboardButton('Настройки')
-)
-
 
 @dp.message_handler(commands=['start'])
 @log_incoming
 async def process_start_command(msg: Message):
     if msg.chat.id > 0:
-        await msg.answer('Добро пожаловать в Toxic Traders бот', reply_markup=reply_markup)
+        await msg.answer('Добро пожаловать в Toxic Traders бот', reply_markup=ReplyKeyboardRemove())
 
 
 @dp.message_handler(commands=['funding'])
-@dp.message_handler(text='Текущая ставка финансирования')
 @log_incoming
 @delete_incoming
 async def funding(msg: Message):
-    await msg.answer(await get_last_funding(), reply_markup=reply_markup)
+    await msg.answer(await get_last_funding(), reply_markup=ReplyKeyboardRemove())
 
 
 @dp.message_handler(commands=['orders'])
-@dp.message_handler(text='Стакан Binance BTCUSDT Futures')
 @log_incoming
 @delete_incoming
 async def orders(msg: Message):
     message = await book.draw()
     if isinstance(message, str):
-        await msg.answer(message)
+        await msg.answer(message, reply_markup=ReplyKeyboardRemove())
     else:
-        await bot.send_photo(msg.chat.id, message, reply_markup=reply_markup)
+        await bot.send_photo(msg.chat.id, message, reply_markup=ReplyKeyboardRemove())
 
 
 @dp.message_handler(commands=['settings'])
-@dp.message_handler(text='Настройки')
 @log_incoming
 @delete_incoming
 async def settings(msg: Message):
@@ -85,6 +75,7 @@ async def subscription(call: CallbackQuery):
     if call.data == 'subscribe':
         msg = 'Вы уже подписаны на рассылку'
         if not user or not user['subscribe']:
+            user = user or {'id': call.from_user.id}
             msg = 'Вы успешно подписались на рассылку'
             user['subscribe'] = True
             users_repo.put_user(**user)
@@ -103,16 +94,15 @@ async def subscription(call: CallbackQuery):
 @log_incoming
 async def system_monitor(msg: Message):
     if await Users().is_admin(msg.from_user.id):
-        await msg.answer(get_system_usage())
+        await msg.answer(get_system_usage(), reply_markup=ReplyKeyboardRemove())
 
 
 async def send_multiple(message: str) -> None:
     users_repo = Users()
     invalid_users = []
     for recipient in users_repo.get_recipients():
-        markup = reply_markup if recipient > 0 else None
         try:
-            await bot.send_message(recipient, message, reply_markup=markup)
+            await bot.send_message(recipient, message, parse_mode='html', reply_markup=ReplyKeyboardRemove())
         except (BotBlocked, ChatNotFound):
             invalid_users.append(recipient)
     bot.loop.create_task(users_repo.delete_users(invalid_users))

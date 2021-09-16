@@ -1,8 +1,8 @@
 import asyncio
-from asyncio.exceptions import TimeoutError
-from datetime import datetime
-from decimal import Decimal
 import logging
+from asyncio.exceptions import TimeoutError
+from datetime import datetime, timedelta
+from decimal import Decimal
 
 from aiohttp.client import ClientSession
 
@@ -12,7 +12,7 @@ tickers = ('btc', 'eth', 'usdc', 'usdt', 'busd')
 base_url = 'https://api.whale-alert.io/v1/transactions?min_value=500000'
 
 
-async def get_data(url):
+async def get_json(url):
     while True:
         try:
             async with ClientSession() as session:
@@ -27,6 +27,28 @@ async def get_data(url):
             await asyncio.sleep(10)
 
 
+async def paginate(url, cursor=None):
+    if cursor:
+        url = f'{url}&cursor={cursor}'
+    data = await get_json(url)
+
+    if data['count']:
+        return data['transactions'], data['cursor']
+    return None
+
+
+async def get_transactions(url):
+    all_transactions = []
+    cursor = None
+    while True:
+        if result := await paginate(url, cursor):
+            await asyncio.sleep(10)
+            transactions, cursor = result
+            all_transactions.extend(transactions)
+        else:
+            return all_transactions
+
+
 def save_transactions(dynamo_resource, items):
     table = dynamo_resource.Table('Transactions')
     with table.batch_writer() as batch:
@@ -36,36 +58,31 @@ def save_transactions(dynamo_resource, items):
 
 async def start_monitoring(dynamo_resource):
     logging.info('Starting monitoring.')
-    transactions_cache = {}
-    start_hour = datetime.now().hour
     while True:
         try:
-            now = datetime.now()
-            left = int(now.replace(microsecond=0, second=0).timestamp()) - 45
-            right = left + 61 + 45
+            right = int(datetime.now().timestamp())
+            left = right - timedelta(minutes=5).seconds
             url = f'{base_url}&start={left}&end={right}'
 
-            data = await get_data(url)
-            for transaction in data.get('transactions', ()):
+            transactions = {}
+            for transaction in await get_transactions(url):
                 if transaction['symbol'] not in tickers:
                     continue
-                elif transaction['hash'] in transactions_cache:
-                    continue
-                elif (hour := datetime.fromtimestamp(transaction['timestamp']).hour) > start_hour:
-                    logging.info(f'Saving transactions. Count: {len(transactions_cache)}.')
-                    save_transactions(dynamo_resource, list(transactions_cache.values()))
-                    logging.info('Saving completed.')
-                    transactions_cache.clear()
-                    start_hour = hour
-
-                transactions_cache[transaction['hash']] = {
+                transactions[transaction['hash']] = {
                     'hash': transaction['hash'],
                     'from_name': transaction['from'].get('owner'),
                     'to_name': transaction['to'].get('owner'),
+                    'from_address': transaction['from'].get('address'),
+                    'to_address': transaction['to'].get('address'),
                     'ticker': transaction['symbol'],
                     'timestamp': transaction['timestamp'],
-                    'amount': Decimal(str(round(transaction['amount'], 2)))
+                    'amount': Decimal(str(round(transaction['amount'], 2))),
+                    'amount_usd': Decimal(str(round(transaction['amount_usd'], 2)))
                 }
+
+            logging.info(f'Saving transactions. Count: {len(transactions)}.')
+            save_transactions(dynamo_resource, list(transactions.values()))
+            logging.info('Saving completed.')
 
             await asyncio.sleep(15)
         except Exception as e:
