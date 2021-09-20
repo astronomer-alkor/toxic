@@ -55,6 +55,14 @@ def log_incoming(func: Callable):
     return wrapper
 
 
+def disable_for_group(func: Callable):
+    async def wrapper(message: Message, **_):
+        if message.chat.id > 0:
+            return await func(message)
+        await message.reply('Это функция недоступна для группы. Пишите в бота напрямую')
+    return wrapper
+
+
 @cached
 async def get_last_funding() -> str:
     requested_tickers = ('BTCUSDT', 'ETHUSDT')

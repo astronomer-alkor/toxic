@@ -21,7 +21,13 @@ from aiogram.utils.exceptions import (
 from .apps.order_book import book
 from .config import TelegramConfig
 from .users import Users
-from .utils import delete_incoming, log_incoming, get_last_funding, get_system_usage
+from .utils import (
+    delete_incoming,
+    log_incoming,
+    get_last_funding,
+    get_system_usage,
+    disable_for_group,
+)
 
 bot = Bot(TelegramConfig().bot_token.get_secret_value(), loop=asyncio.get_event_loop())
 dp = Dispatcher(bot, loop=bot.loop, storage=MemoryStorage())
@@ -29,14 +35,15 @@ dp = Dispatcher(bot, loop=bot.loop, storage=MemoryStorage())
 
 @dp.message_handler(commands=['start'])
 @log_incoming
+@disable_for_group
 async def process_start_command(msg: Message):
-    if msg.chat.id > 0:
-        await msg.answer('Добро пожаловать в Toxic Traders бот', reply_markup=ReplyKeyboardRemove())
+    await msg.answer('Добро пожаловать в Toxic Traders бот', reply_markup=ReplyKeyboardRemove())
 
 
 @dp.message_handler(commands=['funding'])
 @log_incoming
 @delete_incoming
+@disable_for_group
 async def funding(msg: Message):
     await msg.answer(await get_last_funding(), reply_markup=ReplyKeyboardRemove())
 
@@ -44,6 +51,7 @@ async def funding(msg: Message):
 @dp.message_handler(commands=['orders'])
 @log_incoming
 @delete_incoming
+@disable_for_group
 async def orders(msg: Message):
     message = await book.draw()
     if isinstance(message, str):
@@ -55,6 +63,7 @@ async def orders(msg: Message):
 @dp.message_handler(commands=['settings'])
 @log_incoming
 @delete_incoming
+@disable_for_group
 async def settings(msg: Message):
     user = Users().get_user(msg.from_user.id)
     if user and user['subscribe']:
