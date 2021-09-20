@@ -1,9 +1,10 @@
 import logging
+import pickle
 from contextlib import suppress
 from copy import deepcopy
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any, Callable
+from typing import Any, Callable, List
 
 import psutil
 from aiogram.types import Message
@@ -28,6 +29,26 @@ def cached(func: Callable):
 
         latest_call_time = now
         latest_result = await func(*args, **kwargs)
+        return deepcopy(latest_result)
+
+    return wrapper
+
+
+def cached_with_result(func: Callable):
+    cache = {}
+
+    async def wrapper(*args, **kwargs) -> Any:
+        now = datetime.now()
+
+        key = pickle.dumps((args, sorted(kwargs.items())))
+
+        if value := cache.get(key):
+            latest_result, latest_call_time = value
+            if now - latest_call_time < timedelta(seconds=5):
+                return deepcopy(latest_result)
+
+        latest_result = await func(*args, **kwargs)
+        cache[key] = latest_result, now
         return deepcopy(latest_result)
 
     return wrapper
@@ -63,19 +84,26 @@ def disable_for_group(func: Callable):
     return wrapper
 
 
-@cached
-async def get_last_funding() -> str:
-    requested_tickers = ('BTCUSDT', 'ETHUSDT')
+@cached_with_result
+async def get_last_funding(requested_tickers: List[str]) -> str:
+    for index, item in enumerate(requested_tickers):
+        item = item.upper()
+        if not item.endswith('USDT') and not item.endswith('BUSD'):
+            item = f'{item}USDT'
+        requested_tickers[index] = item
+    requested_tickers = requested_tickers or ('BTCUSDT', 'ETHUSDT')
     async with ClientSession() as session:
         async with session.get('https://www.binance.com/fapi/v1/premiumIndex') as response:
             data = await response.json()
     funding = []
     for item in data:
         if (symbol := item['symbol']) in requested_tickers:
-            funding_value = str(Decimal(item['lastFundingRate']) * 100).rstrip('0')
+            funding_value = str(Decimal(item['lastFundingRate']) * 100).rstrip('0') or '0'
             item = f'{symbol} {funding_value}%'
             funding.append(item)
-    return '\n'.join(funding)
+    if funding:
+        return '\n'.join(funding)
+    return 'Неверные названия тикеров'
 
 
 def get_system_usage() -> str:
