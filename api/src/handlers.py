@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import suppress
 
 from aiogram import Bot
@@ -116,10 +117,8 @@ async def system_monitor(msg: Message):
 
 async def send_multiple(message: str) -> None:
     users_repo = Users()
-    invalid_users = []
     for recipient in users_repo.get_recipients():
         try:
             await bot.send_message(recipient, message, parse_mode='html', reply_markup=ReplyKeyboardRemove())
-        except (BotBlocked, ChatNotFound):
-            invalid_users.append(recipient)
-    bot.loop.create_task(users_repo.delete_users(invalid_users))
+        except (BotBlocked, ChatNotFound) as e:
+            logging.warning(f'An error during send message to the user {recipient}: {e}')
