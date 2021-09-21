@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import pickle
 from contextlib import suppress
@@ -80,7 +81,10 @@ def disable_for_group(func: Callable):
     async def wrapper(message: Message, **_):
         if message.chat.id > 0:
             return await func(message)
-        await message.reply('Это функция недоступна для группы. Пишите в бота напрямую')
+        reply = await message.reply('Это функция недоступна для группы. Пишите в бота напрямую')
+        await asyncio.sleep(5)
+        await message.delete()
+        await reply.delete()
     return wrapper
 
 
