@@ -89,22 +89,33 @@ def disable_for_group(func: Callable):
 
 
 @cached_with_result
-async def get_last_funding(requested_tickers: List[str]) -> str:
-    for index, item in enumerate(requested_tickers):
-        item = item.upper()
-        if not item.endswith('USDT') and not item.endswith('BUSD'):
-            item = f'{item}USDT'
-        requested_tickers[index] = item
-    requested_tickers = requested_tickers or ('BTCUSDT', 'ETHUSDT')
+async def get_last_funding(args) -> str:
+    deviation = False
+    requested_tickers = []
+    if args == '!':
+        deviation = True
+    else:
+        requested_tickers = list(filter(bool, args.split(' ')))
+
+    if not deviation:
+        for index, item in enumerate(requested_tickers):
+            item = item.upper()
+            if not item.endswith('USDT') and not item.endswith('BUSD'):
+                item = f'{item}USDT'
+            requested_tickers[index] = item
+        requested_tickers = requested_tickers or ('BTCUSDT', 'ETHUSDT')
+
     async with ClientSession() as session:
         async with session.get('https://www.binance.com/fapi/v1/premiumIndex') as response:
             data = await response.json()
+
     funding = []
     for item in data:
-        if (symbol := item['symbol']) in requested_tickers:
-            funding_value = str(Decimal(item['lastFundingRate']) * 100).rstrip('0') or '0'
-            item = f'{symbol} {funding_value}%'
-            funding.append(item)
+        if (symbol := item['symbol']) in requested_tickers or (deviation and item['lastFundingRate'] != '0.00010000'):
+            if symbol.isalpha():
+                funding_value = str(Decimal(item['lastFundingRate']) * 100).rstrip('0') or '0'
+                item = f'{symbol} {funding_value}%'
+                funding.append(item)
     if funding:
         return '\n'.join(funding)
     return 'Неверные названия тикеров'
