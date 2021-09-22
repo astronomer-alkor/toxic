@@ -74,6 +74,7 @@ def log_incoming(func: Callable):
             f'Username: {message.from_user.username}'
         )
         return await func(message)
+
     return wrapper
 
 
@@ -85,15 +86,19 @@ def disable_for_group(func: Callable):
         await asyncio.sleep(5)
         await message.delete()
         await reply.delete()
+
     return wrapper
 
 
 @cached_with_result
 async def get_last_funding(args) -> str:
     deviation = False
+    full = False
     requested_tickers = []
     if args == '!':
         deviation = True
+    elif args == '*':
+        full = True
     else:
         requested_tickers = list(filter(bool, args.split(' ')))
 
@@ -111,7 +116,11 @@ async def get_last_funding(args) -> str:
 
     funding = []
     for item in data:
-        if (symbol := item['symbol']) in requested_tickers or (deviation and item['lastFundingRate'] != '0.00010000'):
+        if any((
+                full,
+                (symbol := item['symbol']) in requested_tickers,
+                (deviation and item['lastFundingRate'] != '0.00010000')
+        )):
             if symbol.isalpha():
                 funding_value = str(Decimal(item['lastFundingRate']) * 100).rstrip('0') or '0'
                 item = f'{symbol} {funding_value}%'

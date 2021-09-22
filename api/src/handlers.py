@@ -46,14 +46,7 @@ async def process_start_command(msg: Message):
 @delete_incoming
 @disable_for_group
 async def funding(msg: Message):
-    args = msg.get_args()
-    tickers = ()
-    innormal = False
-    if args == '!':
-        inormal = True
-    else:
-        tickers = list(filter(bool, args.split(' ')))
-    await msg.answer(await get_last_funding(args), reply_markup=ReplyKeyboardRemove())
+    await msg.answer(await get_last_funding(msg.get_args()), reply_markup=ReplyKeyboardRemove())
 
 
 @dp.message_handler(commands=['orders'])
