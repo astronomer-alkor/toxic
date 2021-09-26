@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from itertools import groupby
 from multiprocessing import connection, Process, Pipe
-from typing import Dict, List, Tuple
+from typing import Dict, Iterable, List, Tuple
 
 import matplotlib.pyplot as plt
 import websockets
@@ -30,8 +30,8 @@ def round_down_item(item) -> float:
     return round_down(item[0])
 
 
-def sum_group(group) -> Tuple[float, int]:
-    return round_down_item(group[0]), round(sum(i[1] for i in group))
+def prepare_group(group) -> Tuple[float, List[Tuple[float, float]]]:
+    return round_down_item(group[0]), group
 
 
 class OrderBook:
@@ -60,12 +60,31 @@ class OrderBook:
                 else:
                     to_update.pop(item[0], None)
 
-    def prepare_to_draw(self) -> Tuple[Dict[float, int], Dict[float, int]]:
-        asks = [sum_group(list(group)) for _, group in groupby(self.asks.items(), key=round_down_item)]
-        bids = [sum_group(list(group)) for _, group in groupby(self.bids.items(), key=round_down_item)]
+    def get_grouped_orders(
+            self
+    ) -> Tuple[Dict[float, List[Tuple[float, float]]], Dict[float, List[Tuple[float, float]]]]:
+        asks = dict(sorted(self.asks.items()))
+        bids = dict(sorted(self.bids.items()))
+
+        asks = [list(group) for _, group in groupby(asks.items(), key=round_down_item)]
+        bids = [list(group) for _, group in groupby(bids.items(), key=round_down_item)]
+
+        asks = [prepare_group(group) for group in asks]
+        bids = [prepare_group(group) for group in bids]
+
         asks = dict(sorted(asks))
-        bids = dict(reversed(dict(sorted(bids)).items()))
+        bids = dict(reversed(bids))
+
         return asks, bids
+
+    def sum_groups(self, *groups) -> Iterable[Dict[float, float]]:
+        results = []
+        for group in groups:
+            results.append({price: sum([order[1] for order in orders]) for price, orders in group.items()})
+        return results
+
+    def round_groups(self, *groups) -> Iterable[Dict[float, float]]:
+        return [{k: round(v) for k, v in group.items()} for group in groups]
 
     def _draw_asks(self, asks: Dict[float, int], ax) -> None:
         rows = []
@@ -80,8 +99,8 @@ class OrderBook:
                 break
         ax.barh(y=[i[-1] for i in rows], width=[i[1] for i in rows], height=0.8, color='#362328')
         for index, item in enumerate(rows):
-            ax.text(8, index - .2, str(item[1]), color='white')
-            ax.text(147, index - .2, str(item[0]), color='#DC535E')
+            ax.text(15, index - .2, str(item[1]), color='white', horizontalalignment='center', )
+            ax.text(295, index - .2, str(item[0]), color='#DC535E')
 
     def _draw_bids(self, bids: Dict[float, int], ax) -> None:
         rows = []
@@ -96,8 +115,8 @@ class OrderBook:
                 break
         ax.barh(y=[i[-1] for i in rows], width=[i[1] for i in rows], height=0.8, color='#21342e')
         for index, item in enumerate(rows):
-            ax.text(8, -index - 1.2, str(item[1]), color='white')
-            ax.text(147, -index - 1.2, str(item[0]), color='#58BE82')
+            ax.text(15, -index - 1.2, str(item[1]), color='white', horizontalalignment='center', )
+            ax.text(295, -index - 1.2, str(item[0]), color='#58BE82')
 
     @cached
     async def draw(self):
@@ -108,7 +127,7 @@ class OrderBook:
             return f'Стакан будет досупен через {minutes_part}{seconds} сек'
 
         receive_end, send_end = Pipe(duplex=False)
-        p = Process(target=self._draw, args=(send_end, ))
+        p = Process(target=self._draw, args=(send_end,))
         p.start()
         p.join()
         buffer = BytesIO()
@@ -117,7 +136,8 @@ class OrderBook:
         return buffer
 
     def _draw(self, pipe: connection.Connection) -> None:
-        asks, bids = self.prepare_to_draw()
+        asks, bids = self.round_groups(*self.sum_groups(*self.get_grouped_orders()))
+
         fig = plt.figure(figsize=(5, 10))
         ax = fig.subplots()
         fig.tight_layout()
@@ -128,16 +148,24 @@ class OrderBook:
         ax.set_xticklabels([])
         ax.set_yticks([])
         ax.set_xticks([])
-        ax.set_xlim([0, 150])
+        ax.set_xlim([0, 300])
         ax.set_ylim([-12, 11])
         ax.invert_xaxis()
         ax.text(
-            147, -11.87,
+            295, -11.87,
             f'Last updated at {datetime.now(tz=timezone("Europe/Moscow")).time().replace(microsecond=0)} (GMT+3)',
             color='white'
         )
         self._draw_asks(asks, ax)
         self._draw_bids(bids, ax)
+        plt.axhline(y=-0.5, xmax=0.42, linestyle='-', color='#9e690b')
+        plt.axhline(y=-0.5, xmin=0.58, linestyle='-', color='#9e690b')
+        ax.text(
+            150, -0.6,
+            f'{int(self.current_price):,d}',
+            color='#9e690b',
+            horizontalalignment='center'
+        )
 
         buffer = BytesIO()
         plt.savefig(buffer, format='png')
