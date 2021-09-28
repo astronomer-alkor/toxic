@@ -100,7 +100,7 @@ class OrderBook:
         ax.barh(y=[i[-1] for i in rows], width=[i[1] for i in rows], height=0.8, color='#362328')
         for index, item in enumerate(rows):
             ax.text(15, index - .2, str(item[1]), color='white', horizontalalignment='center', )
-            ax.text(295, index - .2, str(item[0]), color='#DC535E')
+            ax.text(495, index - .2, str(item[0]), color='#DC535E')
 
     def _draw_bids(self, bids: Dict[float, int], ax) -> None:
         rows = []
@@ -116,7 +116,7 @@ class OrderBook:
         ax.barh(y=[i[-1] for i in rows], width=[i[1] for i in rows], height=0.8, color='#21342e')
         for index, item in enumerate(rows):
             ax.text(15, -index - 1.2, str(item[1]), color='white', horizontalalignment='center', )
-            ax.text(295, -index - 1.2, str(item[0]), color='#58BE82')
+            ax.text(495, -index - 1.2, str(item[0]), color='#58BE82')
 
     @cached
     async def draw(self):
@@ -148,11 +148,11 @@ class OrderBook:
         ax.set_xticklabels([])
         ax.set_yticks([])
         ax.set_xticks([])
-        ax.set_xlim([0, 300])
+        ax.set_xlim([0, 500])
         ax.set_ylim([-12, 11])
         ax.invert_xaxis()
         ax.text(
-            295, -11.87,
+            495, -11.87,
             f'Last updated at {datetime.now(tz=timezone("Europe/Moscow")).time().replace(microsecond=0)} (GMT+3)',
             color='white'
         )
@@ -161,7 +161,7 @@ class OrderBook:
         plt.axhline(y=-0.5, xmax=0.42, linestyle='-', color='#9e690b')
         plt.axhline(y=-0.5, xmin=0.58, linestyle='-', color='#9e690b')
         ax.text(
-            150, -0.6,
+            250, -0.6,
             f'{int(self.current_price):,d}',
             color='#9e690b',
             horizontalalignment='center'
