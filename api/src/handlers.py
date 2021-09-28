@@ -114,6 +114,18 @@ async def system_monitor(msg: Message):
         await msg.answer(get_system_usage(), reply_markup=ReplyKeyboardRemove())
 
 
+@dp.message_handler(commands=['users'])
+@log_incoming
+async def system_monitor(msg: Message):
+    if await Users().is_admin(msg.from_user.id):
+        users = Users().get_all_users()
+        message = '\n'.join(
+            f'{"✅" if user["subscribe"] else "☑️"} {user["name"]}'
+            for user in users
+        )
+        await msg.answer(message, reply_markup=ReplyKeyboardRemove())
+
+
 async def send_multiple(message: str) -> None:
     users_repo = Users()
     for recipient in users_repo.get_recipients():
@@ -121,3 +133,6 @@ async def send_multiple(message: str) -> None:
             await bot.send_message(recipient, message, parse_mode='html', reply_markup=ReplyKeyboardRemove())
         except (BotBlocked, ChatNotFound) as e:
             logging.warning(f'An error during send message to the user {recipient}: {e}')
+            user = users_repo.get_user(recipient)
+            user['subscribe'] = False
+            users_repo.put_user(**user)

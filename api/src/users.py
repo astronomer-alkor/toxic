@@ -23,6 +23,9 @@ class Users:
         )['Items']
         return [int(recipient['id']) for recipient in recipients]
 
+    def get_all_users(self) -> List[Dict[str, Any]]:
+        return self.resource.Table('Users').scan()['Items']
+
     def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
         user = self.resource.Table('Users').query(
             KeyConditionExpression=Key('id').eq(user_id)
