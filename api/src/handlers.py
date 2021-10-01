@@ -130,7 +130,14 @@ async def send_multiple(message: str) -> None:
     users_repo = Users()
     for recipient in users_repo.get_recipients():
         try:
-            await bot.send_message(recipient, message, parse_mode='html', reply_markup=ReplyKeyboardRemove())
+            kwargs = {}
+            try:
+                chat = await bot.get_chat(recipient)
+                if not chat.type == 'channel':
+                    kwargs = {'reply_markup': ReplyKeyboardRemove()}
+            except Exception as e:
+                logging.info(f'An error during get_chat operation: {e}')
+            await bot.send_message(recipient, message, parse_mode='html', **kwargs)
         except (BotBlocked, ChatNotFound) as e:
             logging.warning(f'An error during send message to the user {recipient}: {e}')
             user = users_repo.get_user(recipient)
