@@ -5,7 +5,7 @@ from contextlib import suppress
 from copy import deepcopy
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any, Callable, List
+from typing import Any, Callable
 
 import psutil
 from aiogram.types import Message
@@ -15,24 +15,7 @@ from aiogram.utils.exceptions import (
 )
 from aiohttp import ClientSession
 
-
-def cached(func: Callable):
-    latest_call_time = datetime.now()
-    latest_result = None
-
-    async def wrapper(*args, **kwargs) -> Any:
-        nonlocal latest_call_time
-        nonlocal latest_result
-
-        now = datetime.now()
-        if latest_result and now - latest_call_time < timedelta(seconds=5):
-            return deepcopy(latest_result)
-
-        latest_call_time = now
-        latest_result = await func(*args, **kwargs)
-        return deepcopy(latest_result)
-
-    return wrapper
+from .users import Users
 
 
 def cached_with_result(func: Callable):
@@ -86,6 +69,24 @@ def disable_for_group(func: Callable):
         await asyncio.sleep(5)
         await message.delete()
         await reply.delete()
+
+    return wrapper
+
+
+def save_user(func: Callable):
+    async def wrapper(message: Message, **_):
+        users = Users()
+        if not users.get_user(message.from_user.id):
+            users.put_user(
+                id=message.from_user.id,
+                name=' '.join((
+                    message.from_user.first_name or '',
+                    message.from_user.last_name or '',
+                    message.from_user.username or ''
+                ))
+            )
+
+        return await func(message)
 
     return wrapper
 

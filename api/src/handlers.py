@@ -7,20 +7,18 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import Dispatcher
 from aiogram.types import (
     CallbackQuery,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
     Message,
     ReplyKeyboardRemove,
 )
 from aiogram.utils.exceptions import (
     BotBlocked,
     ChatNotFound,
-    MessageCantBeDeleted,
-    MessageToDeleteNotFound,
+    MessageNotModified,
 )
 
 from .apps.order_book import book
 from .config import TelegramConfig
+from .keyboards import block_size_keyboard, get_settings_keyboard
 from .users import Users
 from .utils import (
     delete_incoming,
@@ -28,6 +26,7 @@ from .utils import (
     get_last_funding,
     get_system_usage,
     disable_for_group,
+    save_user,
 )
 
 bot = Bot(TelegramConfig().bot_token.get_secret_value(), loop=asyncio.get_event_loop())
@@ -36,6 +35,7 @@ dp = Dispatcher(bot, loop=bot.loop, storage=MemoryStorage())
 
 @dp.message_handler(commands=['start'])
 @log_incoming
+@save_user
 @disable_for_group
 async def process_start_command(msg: Message):
     await msg.answer('Добро пожаловать в Toxic Traders бот', reply_markup=ReplyKeyboardRemove())
@@ -44,6 +44,7 @@ async def process_start_command(msg: Message):
 @dp.message_handler(commands=['funding'])
 @log_incoming
 @delete_incoming
+@save_user
 @disable_for_group
 async def funding(msg: Message):
     await msg.answer(await get_last_funding(msg.get_args()), reply_markup=ReplyKeyboardRemove())
@@ -52,9 +53,11 @@ async def funding(msg: Message):
 @dp.message_handler(commands=['orders'])
 @log_incoming
 @delete_incoming
+@save_user
 @disable_for_group
 async def orders(msg: Message):
-    message = await book.draw()
+    block_size = Users().get_user(msg.from_user.id).get('block_size') or 100
+    message = await book.draw(block_size)
     if isinstance(message, str):
         await msg.answer(message, reply_markup=ReplyKeyboardRemove())
     else:
@@ -64,17 +67,10 @@ async def orders(msg: Message):
 @dp.message_handler(commands=['settings'])
 @log_incoming
 @delete_incoming
+@save_user
 @disable_for_group
 async def settings(msg: Message):
-    user = Users().get_user(msg.from_user.id)
-    if user and user['subscribe']:
-        text = 'Отписаться от рассылки'
-        callback_data = 'unsubscribe'
-    else:
-        text = 'Подписаться на рассылку'
-        callback_data = 'subscribe'
-    keyboard = InlineKeyboardMarkup(row_width=1).add(InlineKeyboardButton(text=text, callback_data=callback_data))
-    await msg.answer('Настройки', reply_markup=keyboard)
+    await msg.answer('Настройки', reply_markup=get_settings_keyboard(msg.from_user.id))
 
 
 @dp.callback_query_handler(text='unsubscribe')
@@ -84,27 +80,57 @@ async def subscription(call: CallbackQuery):
     user = users_repo.get_user(call.from_user.id)
     if call.data == 'subscribe':
         msg = 'Вы уже подписаны на рассылку'
-        if not user or not user['subscribe']:
-            user = user or {
-                'id': call.from_user.id,
-                'name': ' '.join((
-                    call.from_user.first_name or '',
-                    call.from_user.last_name or '',
-                    call.from_user.username or ''
-                ))
-            }
+        if not user.get('subscribe'):
             msg = 'Вы успешно подписались на рассылку'
             user['subscribe'] = True
             users_repo.put_user(**user)
     else:
         msg = 'Вы не подписаны на рассылку'
-        if user and user['subscribe']:
+        if user.get('subscribe'):
             msg = 'Вы отписались от рассылки'
             user['subscribe'] = False
             users_repo.put_user(**user)
-    with suppress(MessageCantBeDeleted, MessageToDeleteNotFound):
-        await call.message.delete()
+    with suppress(MessageNotModified):
+        await call.message.edit_text('Настройки', reply_markup=get_settings_keyboard(call.from_user.id))
     await call.answer(msg, show_alert=True)
+
+
+@dp.callback_query_handler(text='block_size')
+async def block_size_settings(call: CallbackQuery):
+    users_repo = Users()
+    user = users_repo.get_user(call.from_user.id)
+
+    block_size = user.get('block_size') or 100
+
+    text = f'Текущий размер блока = <b>{block_size}</b>'
+
+    with suppress(MessageNotModified):
+        await call.message.edit_text(text, parse_mode='html', reply_markup=block_size_keyboard)
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda call: call.data.startswith('change_block_size'))
+async def change_block_size(call: CallbackQuery):
+    users_repo = Users()
+    user = users_repo.get_user(call.from_user.id)
+
+    block_size = int(call.data.split()[-1])
+    user['block_size'] = block_size
+
+    users_repo.put_user(**user)
+
+    text = f'Текущий размер блока = <b>{block_size}</b>'
+
+    with suppress(MessageNotModified):
+        await call.message.edit_text(text, parse_mode='html', reply_markup=block_size_keyboard)
+    await call.answer()
+
+
+@dp.callback_query_handler(text='settings')
+async def return_to_settings(call: CallbackQuery):
+    with suppress(MessageNotModified):
+        await call.message.edit_text('Настройки', reply_markup=get_settings_keyboard(call.from_user.id))
+    await call.answer()
 
 
 @dp.message_handler(commands=['system'])

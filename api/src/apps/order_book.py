@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timedelta
+from functools import partial
 from io import BytesIO
 from itertools import groupby
 from multiprocessing import connection, Process, Pipe
@@ -12,7 +13,7 @@ import websockets
 from aiohttp import ClientSession
 from pytz import timezone
 
-from src.utils import cached
+from src.utils import cached_with_result
 
 base_url = 'wss://fstream.binance.com/stream'
 
@@ -21,17 +22,17 @@ def convert_items(items) -> List[List[float]]:
     return [list(map(float, item)) for item in items]
 
 
-def round_down(value: float) -> float:
+def round_down(value: float, size=100) -> float:
     value = int(value)
-    return value - value % 100
+    return value - value % size
 
 
-def round_down_item(item) -> float:
-    return round_down(item[0])
+def round_down_item(item, size) -> float:
+    return round_down(item[0],  size)
 
 
-def prepare_group(group) -> Tuple[float, List[Tuple[float, float]]]:
-    return round_down_item(group[0]), group
+def prepare_group(group, size) -> Tuple[float, List[Tuple[float, float]]]:
+    return round_down_item(group[0], size), group
 
 
 class OrderBook:
@@ -61,16 +62,17 @@ class OrderBook:
                     to_update.pop(item[0], None)
 
     def get_grouped_orders(
-            self
+            self,
+            size: int
     ) -> Tuple[Dict[float, List[Tuple[float, float]]], Dict[float, List[Tuple[float, float]]]]:
         asks = dict(sorted(self.asks.items()))
         bids = dict(sorted(self.bids.items()))
 
-        asks = [list(group) for _, group in groupby(asks.items(), key=round_down_item)]
-        bids = [list(group) for _, group in groupby(bids.items(), key=round_down_item)]
+        asks = [list(group) for _, group in groupby(asks.items(), key=partial(round_down_item, size=size))]
+        bids = [list(group) for _, group in groupby(bids.items(), key=partial(round_down_item, size=size))]
 
-        asks = [prepare_group(group) for group in asks]
-        bids = [prepare_group(group) for group in bids]
+        asks = [prepare_group(group, size) for group in asks]
+        bids = [prepare_group(group, size) for group in bids]
 
         asks = dict(sorted(asks))
         bids = dict(reversed(bids))
@@ -86,40 +88,40 @@ class OrderBook:
     def round_groups(self, *groups) -> Iterable[Dict[float, float]]:
         return [{k: round(v) for k, v in group.items()} for group in groups]
 
-    def _draw_asks(self, asks: Dict[float, int], ax) -> None:
+    def _draw_asks(self, asks: Dict[float, int], ax, size, max_size) -> None:
         rows = []
-        cur_price = round_down(self.current_price)
+        cur_price = round_down(self.current_price, size)
         index = 0
         while True:
             count_by_price = asks.get(cur_price, 0)
             rows.append((cur_price, count_by_price, index))
             index += 1
-            cur_price += 100
+            cur_price += size
             if index == 11:
                 break
         ax.barh(y=[i[-1] for i in rows], width=[i[1] for i in rows], height=0.8, color='#362328')
         for index, item in enumerate(rows):
-            ax.text(15, index - .2, str(item[1]), color='white', horizontalalignment='center', )
-            ax.text(495, index - .2, str(item[0]), color='#DC535E')
+            ax.text(25 * max_size / 500, index - .2, str(item[1]), color='white', horizontalalignment='center')
+            ax.text(max_size - 7 * max_size / 500, index - .2, str(item[0]), color='#DC535E')
 
-    def _draw_bids(self, bids: Dict[float, int], ax) -> None:
+    def _draw_bids(self, bids: Dict[float, int], ax, size, max_size) -> None:
         rows = []
-        cur_price = round_down(self.current_price)
+        cur_price = round_down(self.current_price, size)
         index = -1
         while True:
             count_by_price = bids.get(cur_price, 0)
             rows.append((cur_price, count_by_price, index))
             index -= 1
-            cur_price -= 100
+            cur_price -= size
             if index == -12:
                 break
         ax.barh(y=[i[-1] for i in rows], width=[i[1] for i in rows], height=0.8, color='#21342e')
         for index, item in enumerate(rows):
-            ax.text(15, -index - 1.2, str(item[1]), color='white', horizontalalignment='center', )
-            ax.text(495, -index - 1.2, str(item[0]), color='#58BE82')
+            ax.text(25 * max_size / 500, -index - 1.2, str(item[1]), color='white', horizontalalignment='center')
+            ax.text(max_size - 7 * max_size / 500, -index - 1.2, str(item[0]), color='#58BE82')
 
-    @cached
-    async def draw(self):
+    @cached_with_result
+    async def draw(self, size):
         if (now := datetime.now()) < self.start_datetime:
             delta = (self.start_datetime - now)
             minutes, seconds = divmod(delta.seconds, 60)
@@ -127,7 +129,7 @@ class OrderBook:
             return f'Стакан будет досупен через {minutes_part}{seconds} сек'
 
         receive_end, send_end = Pipe(duplex=False)
-        p = Process(target=self._draw, args=(send_end,))
+        p = Process(target=self._draw, args=(size, send_end))
         p.start()
         p.join()
         buffer = BytesIO()
@@ -135,8 +137,14 @@ class OrderBook:
         buffer.seek(0)
         return buffer
 
-    def _draw(self, pipe: connection.Connection) -> None:
-        asks, bids = self.round_groups(*self.sum_groups(*self.get_grouped_orders()))
+    def _draw(self, size: int, pipe: connection.Connection) -> None:
+        asks, bids = self.round_groups(*self.sum_groups(*self.get_grouped_orders(size)))
+
+        max_size = {
+            100: 500,
+            500: 1000,
+            1000: 2000
+        }[size]
 
         fig = plt.figure(figsize=(5, 10))
         ax = fig.subplots()
@@ -148,20 +156,20 @@ class OrderBook:
         ax.set_xticklabels([])
         ax.set_yticks([])
         ax.set_xticks([])
-        ax.set_xlim([0, 500])
+        ax.set_xlim([0, max_size])
         ax.set_ylim([-12, 11])
         ax.invert_xaxis()
         ax.text(
-            495, -11.87,
+            max_size - 7 * max_size / 500, -11.87,
             f'Last updated at {datetime.now(tz=timezone("Europe/Moscow")).time().replace(microsecond=0)} (GMT+3)',
             color='white'
         )
-        self._draw_asks(asks, ax)
-        self._draw_bids(bids, ax)
+        self._draw_asks(asks, ax, size, max_size)
+        self._draw_bids(bids, ax, size, max_size)
         plt.axhline(y=-0.5, xmax=0.42, linestyle='-', color='#9e690b')
         plt.axhline(y=-0.5, xmin=0.58, linestyle='-', color='#9e690b')
         ax.text(
-            250, -0.6,
+            max_size / 2, -0.6,
             f'{int(self.current_price):,d}',
             color='#9e690b',
             horizontalalignment='center'
