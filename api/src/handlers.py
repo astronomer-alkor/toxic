@@ -142,17 +142,17 @@ async def system_monitor(msg: Message):
 
 @dp.message_handler(commands=['users'])
 @log_incoming
-async def system_monitor(msg: Message):
+async def all_users(msg: Message):
     if await Users().is_admin(msg.from_user.id):
         users = Users().get_all_users()
-        message = '\n'.join(
-            f'{"✅" if user["subscribe"] else "☑️"} {user["name"]}'
+        message = f'Count: {len(users)}\n' + '\n'.join(
+            f'{"✅" if user.get("subscribe") else "☑️"} {user["name"]}'
             for user in users
         )
         await msg.answer(message, reply_markup=ReplyKeyboardRemove())
 
 
-async def send_multiple(message: str) -> None:
+async def send_multiple(message: str, check_admin=False) -> None:
     users_repo = Users()
     for recipient in users_repo.get_recipients():
         try:
@@ -163,7 +163,9 @@ async def send_multiple(message: str) -> None:
                     kwargs = {'reply_markup': ReplyKeyboardRemove()}
             except Exception as e:
                 logging.info(f'An error during get_chat operation: {e}')
-            await bot.send_message(recipient, message, parse_mode='html', **kwargs)
+            if not check_admin or (check_admin and await users_repo.is_admin(recipient)):
+                logging.info(f'Sending alert to {recipient}')
+                await bot.send_message(recipient, message, parse_mode='html', **kwargs)
         except (BotBlocked, ChatNotFound) as e:
             logging.warning(f'An error during send message to the user {recipient}: {e}')
             user = users_repo.get_user(recipient)
