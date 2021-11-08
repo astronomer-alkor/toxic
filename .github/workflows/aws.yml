@@ -96,6 +96,6 @@ jobs:
       - name: Deploy Amazon ECS task definitions
         id: delpoy_task_definitions
         run: |
-          aws ecs update-service --cluster "${{ env.CLUSTER_ARN }}" --service "{{ secrets.SERVICE_ARN }}/api" --task-definition "api"
-          aws ecs update-service --cluster "${{ env.CLUSTER_ARN }}" --service "{{ secrets.SERVICE_ARN }}/transactions_monitor" --task-definition "transactions_monitor"
-          aws ecs update-service --cluster "${{ env.CLUSTER_ARN }}" --service "{{ secrets.SERVICE_ARN }}/binance_flows_reports" --task-definition "binance_flows_reports"
+          aws ecs update-service --cluster "${{ env.CLUSTER_ARN }}" --service "{{ env.SERVICE_ARN }}/api" --task-definition "api"
+          aws ecs update-service --cluster "${{ env.CLUSTER_ARN }}" --service "{{ env.SERVICE_ARN }}/transactions_monitor" --task-definition "transactions_monitor"
+          aws ecs update-service --cluster "${{ env.CLUSTER_ARN }}" --service "{{ env.SERVICE_ARN }}/binance_flows_reports" --task-definition "binance_flows_reports"
