@@ -27,6 +27,7 @@ async def monitor_whale_trades() -> None:
     await connection.recv()
     while True:
         trade = json.loads(await connection.recv())['data']
+        logging.info('New trades received')
         expected_amount = requested_tickers[trade['s'].lower()]
         if float(trade['q']) >= expected_amount:
             logging.info(f'Whale found. Sending signal')

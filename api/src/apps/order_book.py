@@ -207,6 +207,7 @@ async def start_order_book() -> None:
     await conn.recv()
     while True:
         response = json.loads(await conn.recv())
+        logging.info('Order book info Received')
         data = response['data']
         if '@ticker' in response['stream']:
             book.current_price = float(data['c'])

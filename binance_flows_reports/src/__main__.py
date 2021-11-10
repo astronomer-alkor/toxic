@@ -87,6 +87,7 @@ async def send_report(dynamodb, now, hours):
     transactions = get_transactions(dynamodb, now, hours)
     tickers = aggregate_transactions(transactions)
     mapping = {1: 'час', 6: 'последние 6 часов'}
+    logging.info(tickers)
     if message := generate_message(tickers, period=mapping[hours]):
         async with ClientSession() as session:
             response = await session.post(API().api_url, data={'message': message})
