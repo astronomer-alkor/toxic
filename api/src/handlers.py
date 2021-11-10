@@ -145,16 +145,13 @@ async def system_monitor(msg: Message):
 async def all_users(msg: Message):
     if await Users().is_admin(msg.from_user.id):
         users = Users().get_all_users()
-        await msg.answer(f'Count: {len(users)}', reply_markup=ReplyKeyboardRemove())
-
-        chunk = []
-        for user in users:
-            chunk.append(f'{"✅" if user.get("subscribe") else "☑️"} {user["name"]}')
-            if len(chunk) == 50:
-                await msg.answer('\n'.join(chunk), reply_markup=ReplyKeyboardRemove())
-                chunk.clear()
-        if chunk:
-            await msg.answer('\n'.join(chunk), reply_markup=ReplyKeyboardRemove())
+        await msg.answer(
+            '\n'.join((
+                f'Count: {len(users)}',
+                f'Subscribed: {len([user for user in users if user.get("subscribe")])}'
+            )),
+            reply_markup=ReplyKeyboardRemove()
+        )
 
 
 async def send_multiple(message: str, check_admin=False) -> None:
