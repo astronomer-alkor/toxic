@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import suppress
+from datetime import datetime, timedelta
 
 from aiogram import Bot
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -145,10 +146,15 @@ async def system_monitor(msg: Message):
 async def all_users(msg: Message):
     if await Users().is_admin(msg.from_user.id):
         users = Users().get_all_users()
+        active_users = [
+            user for user in users
+            if 'last_seen' in user and datetime.fromisoformat(user['last_seen']) > datetime.now() - timedelta(days=7)
+        ]
         await msg.answer(
             '\n'.join((
                 f'Count: {len(users)}',
-                f'Subscribed: {len([user for user in users if user.get("subscribe")])}'
+                f'Subscribed: {len([user for user in users if user.get("subscribe")])}',
+                f'Active: {len(active_users)}'
             )),
             reply_markup=ReplyKeyboardRemove()
         )

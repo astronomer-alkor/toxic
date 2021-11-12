@@ -75,16 +75,21 @@ def disable_for_group(func: Callable):
 
 def save_user(func: Callable):
     async def wrapper(message: Message, **_):
-        users = Users()
-        if not users.get_user(message.from_user.id):
-            users.put_user(
+        users_repo = Users()
+        user = users_repo.get_user(message.from_user.id)
+        last_seen = datetime.now().replace(microsecond=0).isoformat()
+        if not user:
+            users_repo.put_user(
                 id=message.from_user.id,
+                last_seen=last_seen,
                 name=' '.join((
                     message.from_user.first_name or '',
                     message.from_user.last_name or '',
                     message.from_user.username or ''
                 ))
             )
+        else:
+            users_repo.put_user(**{**user, 'last_seen': last_seen})
 
         return await func(message)
 
