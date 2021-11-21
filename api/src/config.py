@@ -1,4 +1,11 @@
+from enum import Enum
+
 from pydantic import BaseSettings, Field, SecretStr
+
+
+class APIMode(str, Enum):
+    local = 'local'
+    prod = 'prod'
 
 
 class AWSConfig(BaseSettings):
@@ -28,6 +35,11 @@ class TelegramConfig(BaseSettings):
 
 
 class ApiConfig(BaseSettings):
+    mode: str = Field(..., env='MODE')
     host: str = Field(..., env='WEBAPP_HOST')
     port: int = Field(..., env='WEBAPP_PORT')
     notifications_path: SecretStr = Field(..., env='NOTIFICATIONS_PATH')
+
+    @property
+    def prod(self):
+        return self.mode == APIMode.prod

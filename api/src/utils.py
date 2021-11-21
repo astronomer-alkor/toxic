@@ -4,7 +4,6 @@ import pickle
 from contextlib import suppress
 from copy import deepcopy
 from datetime import datetime, timedelta
-from decimal import Decimal
 from typing import Any, Callable
 
 import psutil
@@ -13,29 +12,40 @@ from aiogram.utils.exceptions import (
     MessageCantBeDeleted,
     MessageToDeleteNotFound
 )
-from aiohttp import ClientSession
 
 from .users import Users
 
 
-def cached_with_result(func: Callable):
-    cache = {}
+def cached(seconds=5, only_kwargs=False):
+    def outer(func: Callable):
+        cache = {}
 
-    async def wrapper(*args, **kwargs) -> Any:
-        now = datetime.now()
+        def clear_expired():
+            for key in list(cache.keys()):
+                if value := cache.get(key):
+                    _, latest_call_time = value
+                    if datetime.now() - latest_call_time > timedelta(seconds):
+                        cache.pop(key, None)
 
-        key = pickle.dumps((args, sorted(kwargs.items())))
+        async def wrapper(*args, **kwargs) -> Any:
+            clear_expired()
+            now = datetime.now()
 
-        if value := cache.get(key):
-            latest_result, latest_call_time = value
-            if now - latest_call_time < timedelta(seconds=5):
-                return deepcopy(latest_result)
+            params = sorted(kwargs.items()) if only_kwargs else (args, sorted(kwargs.items()))
+            key = pickle.dumps(params)
 
-        latest_result = await func(*args, **kwargs)
-        cache[key] = latest_result, now
-        return deepcopy(latest_result)
+            if value := cache.get(key):
+                latest_result, latest_call_time = value
+                if now - latest_call_time < timedelta(seconds=seconds):
+                    return deepcopy(latest_result)
 
-    return wrapper
+            latest_result = await func(*args, **kwargs)
+            cache[key] = latest_result, now
+            return deepcopy(latest_result)
+
+        return wrapper
+
+    return outer
 
 
 def delete_incoming(func: Callable):
@@ -94,46 +104,6 @@ def save_user(func: Callable):
         return await func(message)
 
     return wrapper
-
-
-@cached_with_result
-async def get_last_funding(args) -> str:
-    deviation = False
-    full = False
-    requested_tickers = []
-    if args == '!':
-        deviation = True
-    elif args == '*':
-        full = True
-    else:
-        requested_tickers = list(filter(bool, args.split(' ')))
-
-    if not deviation:
-        for index, item in enumerate(requested_tickers):
-            item = item.upper()
-            if not item.endswith('USDT') and not item.endswith('BUSD'):
-                item = f'{item}USDT'
-            requested_tickers[index] = item
-        requested_tickers = requested_tickers or ('BTCUSDT', 'ETHUSDT')
-
-    async with ClientSession() as session:
-        async with session.get('https://www.binance.com/fapi/v1/premiumIndex') as response:
-            data = await response.json()
-
-    funding = []
-    for item in data:
-        if any((
-                full,
-                (symbol := item['symbol']) in requested_tickers,
-                (deviation and item['lastFundingRate'] != '0.00010000')
-        )):
-            if symbol.isalpha():
-                funding_value = str(Decimal(item['lastFundingRate']) * 100).rstrip('0') or '0'
-                item = f'{symbol} {funding_value}%'
-                funding.append(item)
-    if funding:
-        return '\n'.join(funding)
-    return 'Неверные названия тикеров'
 
 
 def get_system_usage() -> str:

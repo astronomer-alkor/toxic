@@ -13,7 +13,7 @@ import websockets
 from aiohttp import ClientSession
 from pytz import timezone
 
-from src.utils import cached_with_result
+from src.utils import cached
 
 base_url = 'wss://fstream.binance.com/stream'
 
@@ -120,7 +120,7 @@ class OrderBook:
             ax.text(25 * max_size / 500, -index - 1.2, str(item[1]), color='white', horizontalalignment='center')
             ax.text(max_size - 7 * max_size / 500, -index - 1.2, str(item[0]), color='#58BE82')
 
-    @cached_with_result
+    @cached()
     async def draw(self, size):
         if (now := datetime.now()) < self.start_datetime:
             delta = (self.start_datetime - now)
@@ -207,7 +207,6 @@ async def start_order_book() -> None:
     await conn.recv()
     while True:
         response = json.loads(await conn.recv())
-        logging.info('Order book info Received')
         data = response['data']
         if '@ticker' in response['stream']:
             book.current_price = float(data['c'])

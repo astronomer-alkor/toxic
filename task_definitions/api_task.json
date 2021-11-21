@@ -49,6 +49,10 @@
           "value": "%DYNAMODB_PORT%"
         },
         {
+          "name": "MODE",
+          "value": "%MODE%"
+        },
+        {
           "name": "API_URL",
           "value": "%API_URL%"
         },

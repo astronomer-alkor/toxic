@@ -1,7 +1,9 @@
 import asyncio
 import logging
 from contextlib import suppress
+from copy import deepcopy
 from datetime import datetime, timedelta
+from functools import partial
 
 from aiogram import Bot
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -12,19 +14,21 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 from aiogram.utils.exceptions import (
+    BadRequest,
     BotBlocked,
     ChatNotFound,
     MessageNotModified,
 )
 
+from .apps.funding import Funding
 from .apps.order_book import book
+from .config import ApiConfig
 from .config import TelegramConfig
 from .keyboards import block_size_keyboard, get_settings_keyboard
 from .users import Users
 from .utils import (
     delete_incoming,
     log_incoming,
-    get_last_funding,
     get_system_usage,
     disable_for_group,
     save_user,
@@ -42,13 +46,28 @@ async def process_start_command(msg: Message):
     await msg.answer('Добро пожаловать в Toxic Traders бот', reply_markup=ReplyKeyboardRemove())
 
 
+async def send_to_user(user_id, message, is_photo=False):
+    logging.info('Funding image received. Sending')
+    if is_photo:
+        try:
+            await bot.send_photo(user_id, deepcopy(message), reply_markup=ReplyKeyboardRemove())
+        except BadRequest:
+            await bot.send_document(user_id, ('funding.png', message), reply_markup=ReplyKeyboardRemove())
+    else:
+        await bot.send_message(user_id, message, reply_markup=ReplyKeyboardRemove())
+
+
 @dp.message_handler(commands=['funding'])
 @log_incoming
 @delete_incoming
 @save_user
 @disable_for_group
 async def funding(msg: Message):
-    await msg.answer(await get_last_funding(msg.get_args()), reply_markup=ReplyKeyboardRemove())
+    args = msg.get_args()
+    funding_repo = Funding(callback=partial(send_to_user, msg.from_user.id))
+    message = await funding_repo.get_last_funding(args=args)
+    dp.loop.create_task(funding_repo.send_funding_image(args))
+    await msg.answer(message, reply_markup=ReplyKeyboardRemove())
 
 
 @dp.message_handler(commands=['orders'])
@@ -176,6 +195,7 @@ async def send_multiple(message: str, check_admin=False) -> None:
                 await bot.send_message(recipient, message, parse_mode='html', **kwargs)
         except (BotBlocked, ChatNotFound) as e:
             logging.warning(f'An error during send message to the user {recipient}: {e}')
-            user = users_repo.get_user(recipient)
-            user['subscribe'] = False
-            users_repo.put_user(**user)
+            if ApiConfig().prod:
+                user = users_repo.get_user(recipient)
+                user['subscribe'] = False
+                users_repo.put_user(**user)

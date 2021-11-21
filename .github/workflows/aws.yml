@@ -58,6 +58,7 @@ jobs:
           -e "s;%DYNAMODB_HOST%;${{ secrets.DYNAMODB_HOST }};g" \
           -e "s;%DYNAMODB_PORT%;${{ secrets.DYNAMODB_PORT }};g" \
           -e "s;%API_URL%;${{ secrets.API_URL }};g" \
+          -e "s;%MODE%;${{ secrets.MODE }};g" \
           -e "s;%TG_BOT_TOKEN%;${{ secrets.TG_BOT_TOKEN }};g" \
           -e "s;%WEBHOOK_PORT%;${{ secrets.WEBHOOK_PORT }};g" \
           -e "s;%WEBHOOK_URL_PATH%;${{ secrets.WEBHOOK_URL_PATH }};g" \
