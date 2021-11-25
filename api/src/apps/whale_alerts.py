@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime, timedelta
 
 import websockets
 
@@ -25,6 +26,7 @@ async def monitor_whale_trades() -> None:
         )
     )
     await connection.recv()
+    start = datetime.now()
     while True:
         trade = json.loads(await connection.recv())['data']
         expected_amount = requested_tickers[trade['s'].lower()]
@@ -35,3 +37,6 @@ async def monitor_whale_trades() -> None:
                 f'{"🟥 Продажа" if trade["m"] else "🟩 Покупка"} {trade["q"]} по цене {trade["p"]}'
             )
             logging.info('Done')
+        if (now := datetime.now()) - timedelta(minutes=60) > start:
+            start = now
+            logging.info('Whale alerts works norminal')

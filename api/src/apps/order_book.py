@@ -205,6 +205,7 @@ async def start_order_book() -> None:
         )
     )
     await conn.recv()
+    start = datetime.now()
     while True:
         response = json.loads(await conn.recv())
         data = response['data']
@@ -212,6 +213,9 @@ async def start_order_book() -> None:
             book.current_price = float(data['c'])
             continue
         book.add_new_data(bid=convert_items(data['b']), ask=convert_items(data['a']))
+        if (now := datetime.now()) - timedelta(minutes=60) > start:
+            start = now
+            logging.info('Order book works norminal')
 
 
 if __name__ == '__main__':
