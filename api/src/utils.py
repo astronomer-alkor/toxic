@@ -10,7 +10,8 @@ import psutil
 from aiogram.types import Message
 from aiogram.utils.exceptions import (
     MessageCantBeDeleted,
-    MessageToDeleteNotFound
+    MessageToDeleteNotFound,
+    BotKicked,
 )
 
 from .users import Users
@@ -51,7 +52,7 @@ def cached(seconds=5, only_kwargs=False):
 def delete_incoming(func: Callable):
     async def wrapper(message: Message, **_):
         result = await func(message)
-        with suppress(MessageCantBeDeleted, MessageToDeleteNotFound):
+        with suppress(MessageCantBeDeleted, MessageToDeleteNotFound, BotKicked):
             await message.delete()
         return result
 
@@ -75,10 +76,15 @@ def disable_for_group(func: Callable):
     async def wrapper(message: Message, **_):
         if message.chat.id > 0:
             return await func(message)
-        reply = await message.reply('Это функция недоступна для группы. Пишите в бота напрямую')
-        await asyncio.sleep(5)
-        await message.delete()
-        await reply.delete()
+        try:
+            reply = await message.reply('Это функция недоступна для группы. Пишите в бота напрямую')
+            await asyncio.sleep(5)
+            await message.delete()
+            await reply.delete()
+        except BotKicked:
+            logging.warning(f'Bot was kicked for {message.chat.full_name} with ID {message.chat.id}')
+        except Exception as e:
+            logging.warning(e)
 
     return wrapper
 

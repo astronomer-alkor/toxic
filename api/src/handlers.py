@@ -193,7 +193,7 @@ async def send_multiple(message: str, check_admin=False) -> None:
             if not check_admin or (check_admin and await users_repo.is_admin(recipient)):
                 logging.info(f'Sending alert to {recipient}')
                 await bot.send_message(recipient, message, parse_mode='html', **kwargs)
-        except (BotBlocked, ChatNotFound) as e:
+        except Exception as e:
             logging.warning(f'An error during send message to the user {recipient}: {e}')
             if ApiConfig().prod:
                 user = users_repo.get_user(recipient)
