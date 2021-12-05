@@ -4,8 +4,8 @@ import logging
 from aiogram.dispatcher.webhook import get_new_configured_app
 from aiohttp import web
 
+from .apps import WhaleAlerts
 from .apps.order_book import start_order_book
-from .apps.whale_alerts import monitor_whale_trades
 from .config import ApiConfig, TelegramConfig
 from .endpoints import routes
 from .handlers import bot, dp
@@ -13,7 +13,7 @@ from .handlers import bot, dp
 
 async def on_startup(*_) -> None:
     dp.loop.create_task(start_order_book())
-    dp.loop.create_task(monitor_whale_trades())
+    dp.loop.create_task(WhaleAlerts().monitor_whale_trades())
 
     webhook = await bot.get_webhook_info()
     webhook_url = TelegramConfig().webhook_url

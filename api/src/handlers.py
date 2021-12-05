@@ -77,7 +77,7 @@ async def funding(msg: Message):
 @disable_for_group
 async def orders(msg: Message):
     block_size = Users().get_user(msg.from_user.id).get('block_size') or 100
-    message = await book.draw(block_size)
+    message = await book.draw(size=block_size)
     if isinstance(message, str):
         await msg.answer(message, reply_markup=ReplyKeyboardRemove())
     else:

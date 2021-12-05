@@ -9,11 +9,11 @@ from multiprocessing import connection, Process, Pipe
 from typing import Dict, Iterable, List, Tuple
 
 import matplotlib.pyplot as plt
-import websockets
 from aiohttp import ClientSession
 from pytz import timezone
 
 from src.utils import cached
+from .base import WebSocketConnector
 
 base_url = 'wss://fstream.binance.com/stream'
 
@@ -28,21 +28,33 @@ def round_down(value: float, size=100) -> float:
 
 
 def round_down_item(item, size) -> float:
-    return round_down(item[0],  size)
+    return round_down(item[0], size)
 
 
 def prepare_group(group, size) -> Tuple[float, List[Tuple[float, float]]]:
     return round_down_item(group[0], size), group
 
 
-class OrderBook:
+connection_data = {
+    'method': 'SUBSCRIBE',
+    'params': [
+        'btcusdt@depth',
+        'btcusdt@ticker'
+    ],
+    'id': 1
+}
+
+
+class OrderBook(WebSocketConnector):
     def __init__(self) -> None:
+        super().__init__(connection_url=base_url, connection_data=connection_data)
         self.bids = {}
         self.asks = {}
         self.current_price = None
         self.start_datetime = datetime.now() + timedelta(minutes=5)
 
     async def initialize(self) -> None:
+        await self.initialize_connection()
         async with ClientSession() as session:
             async with session.get('https://fapi.binance.com/fapi/v1/ticker/price?symbol=BTCUSDT') as r:
                 self.current_price = float((await r.json())['price'])
@@ -52,7 +64,7 @@ class OrderBook:
         ask = [[float(i) for i in item] for item in data['asks']]
         self.add_new_data(bid=bid, ask=ask)
 
-    def add_new_data(self, **data_items: List[List[float]]):
+    def add_new_data(self, **data_items: List[List[float]]) -> None:
         for data_type, items in data_items.items():
             to_update = self.bids if data_type == 'bid' else self.asks
             for item in items:
@@ -120,7 +132,7 @@ class OrderBook:
             ax.text(25 * max_size / 500, -index - 1.2, str(item[1]), color='white', horizontalalignment='center')
             ax.text(max_size - 7 * max_size / 500, -index - 1.2, str(item[0]), color='#58BE82')
 
-    @cached()
+    @cached(only_kwargs=True)
     async def draw(self, size):
         if (now := datetime.now()) < self.start_datetime:
             delta = (self.start_datetime - now)
@@ -191,23 +203,10 @@ async def start_order_book() -> None:
     logging.info('Initializing Order Book')
     await book.initialize()
     logging.info('Done')
-    conn = await websockets.connect(base_url)
-    await conn.send(
-        json.dumps(
-            {
-                'method': 'SUBSCRIBE',
-                'params': [
-                    'btcusdt@depth',
-                    'btcusdt@ticker'
-                ],
-                'id': 1
-            }
-        )
-    )
-    await conn.recv()
+    await book.subscribe()
     start = datetime.now()
     while True:
-        response = json.loads(await conn.recv())
+        response = json.loads(await book.receive_data())
         data = response['data']
         if '@ticker' in response['stream']:
             book.current_price = float(data['c'])
