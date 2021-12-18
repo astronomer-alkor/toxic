@@ -23,7 +23,8 @@ async def get_json(url):
                 )
             if 'json' in r.headers['Content-Type']:
                 return await r.json()
-        except TimeoutError:
+        except TimeoutError as e:
+            logging.error('Timeout reached: ' + str(e))
             await asyncio.sleep(10)
 
 
