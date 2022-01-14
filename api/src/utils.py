@@ -14,7 +14,7 @@ from aiogram.utils.exceptions import (
     BotKicked,
 )
 
-from .users import Users
+from .dynamo import Users
 
 
 def cached(seconds=5, only_kwargs=False):
