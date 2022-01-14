@@ -15,8 +15,6 @@ from aiogram.types import (
 )
 from aiogram.utils.exceptions import (
     BadRequest,
-    BotBlocked,
-    ChatNotFound,
     MessageNotModified,
 )
 
@@ -24,8 +22,14 @@ from .apps.funding import Funding
 from .apps.order_book import book
 from .config import ApiConfig
 from .config import TelegramConfig
-from .keyboards import block_size_keyboard, get_settings_keyboard
-from .users import Users
+from .dynamo import Users, BollingerTickers
+from .keyboards import (
+    block_size_keyboard,
+    get_settings_keyboard,
+    get_bollinger_tickers_keyboard,
+    get_bollinger_ticker_timeframes_keyboard,
+    get_traiding_bb_start_keyboard,
+)
 from .utils import (
     delete_incoming,
     log_incoming,
@@ -33,6 +37,12 @@ from .utils import (
     disable_for_group,
     save_user,
 )
+
+# Commands
+# trading - Trading signals
+# funding - Current funding
+# orders - Order Book Binance BTCUSDT Futures
+# settings - Settings
 
 bot = Bot(TelegramConfig().bot_token.get_secret_value(), loop=asyncio.get_event_loop())
 dp = Dispatcher(bot, loop=bot.loop, storage=MemoryStorage())
@@ -55,6 +65,114 @@ async def send_to_user(user_id, message, is_photo=False):
             await bot.send_document(user_id, ('funding.png', message), reply_markup=ReplyKeyboardRemove())
     else:
         await bot.send_message(user_id, message, reply_markup=ReplyKeyboardRemove())
+
+
+@dp.message_handler(commands=['trading'])
+@log_incoming
+@delete_incoming
+@save_user
+@disable_for_group
+async def trading(msg: Message):
+    await msg.answer('Выберите, что вы хотите сделать', reply_markup=get_traiding_bb_start_keyboard())
+
+
+@dp.callback_query_handler(lambda call: call.data.startswith('trading_bb_start'))
+async def trading_bb_main(call: CallbackQuery):
+    with suppress(MessageNotModified):
+        await call.message.edit_text(
+            'Выберите, что вы хотите сделать',
+            reply_markup=get_traiding_bb_start_keyboard()
+        )
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda call: call.data.startswith('trading_bb_all'))
+async def trading_bb_all(call: CallbackQuery):
+    tickers = await BollingerTickers().get_tickers()
+    with suppress(MessageNotModified):
+        await call.message.edit_text(
+            'Выберите тикеры для подписки',
+            reply_markup=get_bollinger_tickers_keyboard(tickers)
+        )
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda call: call.data.startswith('trading_bb_subscriptions'))
+async def trading_bb_subscriptions(call: CallbackQuery):
+    tickers = await BollingerTickers().get_tickers(user_id=call.from_user.id)
+    if not tickers.items:
+        await call.answer('У вас нет активных подписок!', show_alert=True)
+        return None
+
+    with suppress(MessageNotModified):
+        await call.message.edit_text(
+            'Тикеры, на которые вы подписаны',
+            reply_markup=get_bollinger_tickers_keyboard(tickers, subscribed=True)
+        )
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda call: call.data.startswith('trading_bb_page'))
+async def trading_bb_pagination(call: CallbackQuery):
+    page_num, subscribed = call.data.split()[-2:]
+    if int(subscribed):
+        user_id = call.from_user.id
+        text = 'Тикеры, на которые вы подписаны'
+    else:
+        user_id = None
+        text = 'Выберите тикеры для подписки'
+    tickers = await BollingerTickers().get_tickers(page_num=int(page_num), user_id=user_id)
+    with suppress(MessageNotModified):
+        await call.message.edit_text(
+            text=text,
+            reply_markup=get_bollinger_tickers_keyboard(tickers)
+        )
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda call: call.data.startswith('trading_bb_ticker'))
+async def trading_bb_ticker(call: CallbackQuery):
+    ticker, page, subscriptions = call.data.split()[-3:]
+    timeframes = await BollingerTickers().get_ticker_timeframes(ticker)
+    subscribed_tickers = await Users().get_bollinger_timeframes_by_ticker(call.from_user.id, ticker=ticker)
+    with suppress(MessageNotModified):
+        await call.message.edit_text(
+            f'{ticker}. Выберите таймфрейм',
+            reply_markup=get_bollinger_ticker_timeframes_keyboard(
+                page,
+                ticker,
+                timeframes,
+                subscribed_tickers,
+                subscriptions=bool(int(subscriptions))
+            )
+        )
+    await call.answer()
+
+
+@dp.callback_query_handler(lambda call: call.data.startswith('trading_bb_tf'))
+async def trading_bb_tf(call: CallbackQuery):
+    ticker, timeframe, subscribed = call.data.split()[-3:]
+    full_ticker = f'{ticker}@{timeframe}'
+    neg_subscribed = int(not int(subscribed))
+    if neg_subscribed:
+        await Users().add_bollinger_ticker(call.from_user.id, full_ticker)
+    else:
+        await Users().delete_bollinger_ticker(call.from_user.id, full_ticker)
+    for row in call.message.reply_markup.values['inline_keyboard']:
+        for item in row:
+            if item.callback_data.split()[-3:] == [ticker, timeframe, subscribed]:
+                item.callback_data = f'trading_bb_tf {ticker} {timeframe} {neg_subscribed}'
+                item.text = f'✅{timeframe}' if neg_subscribed else f'☑️{timeframe}'
+                break
+        else:
+            continue
+        break
+    with suppress(MessageNotModified):
+        await call.message.edit_text(
+            f'{ticker}. Выберите таймфрейм',
+            reply_markup=call.message.reply_markup
+        )
+    await call.answer()
 
 
 @dp.message_handler(commands=['funding'])
@@ -164,7 +282,7 @@ async def system_monitor(msg: Message):
 @log_incoming
 async def all_users(msg: Message):
     if await Users().is_admin(msg.from_user.id):
-        users = Users().get_all_users()
+        users = Users().get_all()
         active_users = [
             user for user in users
             if 'last_seen' in user and datetime.fromisoformat(user['last_seen']) > datetime.now() - timedelta(days=7)
