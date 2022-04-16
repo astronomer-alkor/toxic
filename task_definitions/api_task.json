@@ -20,7 +20,6 @@
           "awslogs-stream-prefix": "api"
         }
       },
-      "cpu": 1,
       "memory": 512,
       "entryPoint": [
         "python",
